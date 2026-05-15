@@ -1,0 +1,101 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  username      String    @unique
+  password      String
+  displayName   String?
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ownedCalendars    Calendar[]      @relation("CalendarOwner")
+  calendarMembers   CalendarMember[]
+  events            Event[]
+  refreshTokens     RefreshToken[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model Calendar {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  color       String    @default("#3788d8")
+  isDefault   Boolean   @default(false)
+  ownerId     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner       User              @relation("CalendarOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     CalendarMember[]
+  events      Event[]
+
+  @@index([ownerId])
+}
+
+model CalendarMember {
+  id          String    @id @default(uuid())
+  calendarId  String
+  userId      String
+  role        MemberRole @default(VIEWER)
+  joinedAt    DateTime  @default(now())
+
+  calendar    Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarId, userId])
+  @@index([userId])
+  @@index([calendarId])
+}
+
+enum MemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model Event {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  isAllDay    Boolean   @default(false)
+  location    String?
+  color       String?
+  calendarId  String
+  creatorId   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  calendar    Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  creator     User      @relation(fields: [creatorId], references: [id])
+
+  @@index([calendarId])
+  @@index([creatorId])
+  @@index([startTime])
+  @@index([endTime])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  userId      String
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}

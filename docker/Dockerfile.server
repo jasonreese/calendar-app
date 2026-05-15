@@ -1,0 +1,46 @@
+FROM node:20-alpine AS base
+
+RUN npm install -g pnpm
+
+FROM base AS dependencies
+
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY packages/server/package.json ./packages/server/
+COPY packages/shared/package.json ./packages/shared/
+
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/packages/server/node_modules ./packages/server/node_modules
+COPY --from=dependencies /app/packages/shared/node_modules ./packages/shared/node_modules
+
+COPY packages/server ./packages/server
+COPY packages/shared ./packages/shared
+COPY package.json pnpm-workspace.yaml ./
+
+RUN pnpm --filter @calendar-app/shared build
+RUN pnpm --filter @calendar-app/server prisma:generate
+RUN pnpm --filter @calendar-app/server build
+
+FROM base AS runtime
+
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
+COPY --from=build /app/packages/server/dist ./packages/server/dist
+COPY --from=build /app/packages/server/prisma ./packages/server/prisma
+COPY --from=build /app/packages/shared ./packages/shared
+COPY package.json pnpm-workspace.yaml ./
+
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+CMD ["node", "packages/server/dist/index.js"]
