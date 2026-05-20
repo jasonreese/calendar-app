@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { eventService } from '../../services/eventService';
 import { useEventStore } from '../../store/eventStore';
+import { emitEventCreate, emitEventUpdate } from '../../services/socket';
 import type { Calendar, Event } from '@calendar-app/shared';
 
 function toLocalDateTimeString(date: Date): string {
@@ -34,9 +35,10 @@ interface EventDialogProps {
   calendars: Calendar[];
   defaultDate?: Date;
   event?: Event | null;
+  userId?: string;
 }
 
-export default function EventDialog({ open, onClose, calendarId, calendars, defaultDate, event }: EventDialogProps) {
+export default function EventDialog({ open, onClose, calendarId, calendars, defaultDate, event, userId }: EventDialogProps) {
   const { addEvent, updateEvent } = useEventStore();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -115,6 +117,7 @@ export default function EventDialog({ open, onClose, calendarId, calendars, defa
           color: form.color || undefined,
         });
         updateEvent(event.id, updated);
+        emitEventUpdate(updated);
       } else {
         const created = await eventService.createEvent({
           title: form.title.trim(),
@@ -127,6 +130,7 @@ export default function EventDialog({ open, onClose, calendarId, calendars, defa
           calendarId: form.calendarId,
         });
         addEvent(created);
+        emitEventCreate(created);
       }
       handleClose();
     } catch (error) {
@@ -145,8 +149,24 @@ export default function EventDialog({ open, onClose, calendarId, calendars, defa
         <Stack spacing={2} sx={{ mt: 1 }}>
           {isEdit && eventCalendar && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5 }}>
-              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: eventCalendar.color, flexShrink: 0 }} />
-              <Typography variant="caption" color="text.secondary">{eventCalendar.name}</Typography>
+              <Box
+                sx={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: eventCalendar.ownerId !== userId ? '2px' : '50%',
+                  bgcolor: eventCalendar.color,
+                  flexShrink: 0,
+                  ...(eventCalendar.ownerId !== userId ? { border: '1px dashed rgba(0,0,0,0.4)' } : {}),
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {eventCalendar.name}
+                {eventCalendar.ownerId !== userId && (
+                  <Typography component="span" variant="caption" sx={{ fontSize: '0.6rem', ml: 0.5, color: 'text.disabled' }}>
+                    ({eventCalendar.owner?.displayName || eventCalendar.owner?.username})
+                  </Typography>
+                )}
+              </Typography>
             </Box>
           )}
 
@@ -159,14 +179,31 @@ export default function EventDialog({ open, onClose, calendarId, calendars, defa
               value={form.calendarId}
               onChange={(e) => setForm({ ...form, calendarId: e.target.value })}
             >
-              {calendars.map((cal) => (
-                <MenuItem key={cal.id} value={cal.id}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: cal.color, flexShrink: 0 }} />
-                    {cal.name}
-                  </Box>
-                </MenuItem>
-              ))}
+              {calendars.map((cal) => {
+                const isShared = cal.ownerId !== userId;
+                return (
+                  <MenuItem key={cal.id} value={cal.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                      <Box
+                        sx={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: isShared ? '2px' : '50%',
+                          bgcolor: cal.color,
+                          flexShrink: 0,
+                          ...(isShared ? { border: '1px dashed rgba(0,0,0,0.4)' } : {}),
+                        }}
+                      />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{cal.name}</Typography>
+                      {isShared && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                          {cal.owner?.displayName || cal.owner?.username}
+                        </Typography>
+                      )}
+                    </Box>
+                  </MenuItem>
+                );
+              })}
             </TextField>
           )}
 

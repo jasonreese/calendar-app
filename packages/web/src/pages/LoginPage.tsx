@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Box,
@@ -14,6 +14,8 @@ import { useAuthStore } from '../store/authStore';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect');
   const setUser = useAuthStore((state) => state.setUser);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,7 +30,7 @@ export default function LoginPage() {
     try {
       const result = await authService.login({ email, password });
       setUser(result.user);
-      navigate('/');
+      navigate(redirect || '/');
     } catch (err: any) {
       setError(err.response?.data?.error || '登录失败，请检查邮箱和密码');
     } finally {

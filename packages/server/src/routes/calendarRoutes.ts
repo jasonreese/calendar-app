@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { CalendarController } from '../controllers/calendarController';
+import { InvitationController } from '../controllers/invitationController';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 const calendarController = new CalendarController();
+const invitationController = new InvitationController();
 
 router.use(authenticate);
 
@@ -17,5 +19,7 @@ router.get('/:id/members', (req, res, next) => calendarController.getMembers(req
 router.post('/:id/members', (req, res, next) => calendarController.addMember(req, res, next));
 router.put('/:id/members/:memberId', (req, res, next) => calendarController.updateMemberRole(req, res, next));
 router.delete('/:id/members/:memberId', (req, res, next) => calendarController.removeMember(req, res, next));
+
+router.post('/:id/invitations', (req, res, next) => invitationController.createInvitation(req, res, next));
 
 export default router;

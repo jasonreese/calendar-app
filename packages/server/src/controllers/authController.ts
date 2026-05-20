@@ -1,15 +1,26 @@
 import { Response, NextFunction } from 'express';
 import { AuthService } from '../services/authService';
+import { InvitationService } from '../services/invitationService';
 import { AuthRequest } from '../middleware/auth';
 import type { CreateUserDto, LoginDto } from '@calendar-app/shared';
 
 const authService = new AuthService();
+const invitationService = new InvitationService();
 
 export class AuthController {
   async register(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data: CreateUserDto = req.body;
+      const invitationToken = req.body.invitationToken as string | undefined;
       const result = await authService.register(data);
+
+      if (invitationToken) {
+        try {
+          await invitationService.acceptInvitation(invitationToken, result.user.id);
+        } catch {
+          // Invitation acceptance failure shouldn't block registration
+        }
+      }
 
       res.status(201).json({
         success: true,

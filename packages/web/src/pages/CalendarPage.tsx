@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Box,
   AppBar,
@@ -15,6 +15,7 @@ import {
   Divider,
   CircularProgress,
   Paper,
+  Chip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -22,6 +23,7 @@ import {
   Logout as LogoutIcon,
   Edit as EditIcon,
   People as PeopleIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
@@ -33,6 +35,13 @@ import CalendarGridView from '../components/calendar/CalendarGridView';
 import CalendarDialog from '../components/calendar/CalendarDialog';
 import MemberDialog from '../components/calendar/MemberDialog';
 import EventDialog from '../components/event/EventDialog';
+import {
+  connectSocket,
+  disconnectSocket,
+  joinCalendar,
+  leaveCalendar,
+  emitEventDelete,
+} from '../services/socket';
 import type { Calendar, Event } from '@calendar-app/shared';
 
 const DRAWER_WIDTH = 260;
@@ -84,6 +93,38 @@ export default function CalendarPage() {
     }
   };
 
+  const joinedRoomsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+
+    connectSocket(token);
+
+    return () => {
+      disconnectSocket();
+    };
+  }, []);
+
+  useEffect(() => {
+    const prev = joinedRoomsRef.current;
+    const next = selectedCalendarIds;
+
+    prev.forEach((id) => {
+      if (!next.includes(id)) {
+        leaveCalendar(id);
+      }
+    });
+
+    next.forEach((id) => {
+      if (!prev.includes(id)) {
+        joinCalendar(id);
+      }
+    });
+
+    joinedRoomsRef.current = [...next];
+  }, [selectedCalendarIds]);
+
   const handleLogout = async () => {
     await logout();
     window.location.href = '/login';
@@ -111,7 +152,22 @@ export default function CalendarPage() {
     setEventDialogOpen(true);
   }, []);
 
+  const handleDeleteEvent = useCallback(async (event: Event) => {
+    try {
+      await eventService.deleteEvent(event.id);
+      useEventStore.getState().removeEvent(event.id);
+      emitEventDelete({ id: event.id, calendarId: event.calendarId });
+      setSelectedEvent(null);
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+    }
+  }, []);
+
   const primaryCalendar = calendars.find((c) => c.id === selectedCalendarId);
+  const isOwnCalendar = primaryCalendar ? primaryCalendar.ownerId === user?.id : true;
+  const myCalendars = calendars.filter((c) => c.ownerId === user?.id);
+  const sharedCalendars = calendars.filter((c) => c.ownerId !== user?.id);
+  const sharedCalendarIds = new Set(sharedCalendars.map((c) => c.id));
 
   if (loading) {
     return (
@@ -128,12 +184,20 @@ export default function CalendarPage() {
           <IconButton color="inherit" edge="start" onClick={() => setDrawerOpen(!drawerOpen)} sx={{ mr: 2 }}>
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             {selectedCalendarIds.length === 1 && primaryCalendar
               ? primaryCalendar.name
               : selectedCalendarIds.length > 1
                 ? `多日历视图 (${selectedCalendarIds.length})`
                 : '日历'}
+            {selectedCalendarIds.length === 1 && primaryCalendar && !isOwnCalendar && (
+              <Chip
+                label={`共享自 ${primaryCalendar.owner?.displayName || primaryCalendar.owner?.username || '未知'}`}
+                size="small"
+                variant="outlined"
+                sx={{ color: 'inherit', borderColor: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', height: 22 }}
+              />
+            )}
           </Typography>
           {primaryCalendar && (
             <IconButton
@@ -181,7 +245,7 @@ export default function CalendarPage() {
             </Button>
           </Box>
           <List dense>
-            {calendars.map((calendar) => {
+            {myCalendars.map((calendar) => {
               const isChecked = selectedCalendarIds.includes(calendar.id);
               const isPrimary = calendar.id === selectedCalendarId;
               return (
@@ -232,7 +296,78 @@ export default function CalendarPage() {
                 </ListItem>
               );
             })}
+            {myCalendars.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                暂无日历，点击上方按钮创建
+              </Typography>
+            )}
           </List>
+
+          {sharedCalendars.length > 0 && (
+            <>
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="subtitle2" sx={{ px: 1, mb: 1, color: 'text.secondary' }}>共享日历</Typography>
+              <List dense>
+                {sharedCalendars.map((calendar) => {
+                  const isChecked = selectedCalendarIds.includes(calendar.id);
+                  const isPrimary = calendar.id === selectedCalendarId;
+                  return (
+                    <ListItem
+                      key={calendar.id}
+                      disablePadding
+                      secondaryAction={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            title="查看成员"
+                            onClick={(e) => { e.stopPropagation(); setMemberDialogCalendar(calendar); }}
+                          >
+                            <PeopleIcon fontSize="small" />
+                          </IconButton>
+                          <Checkbox
+                            edge="end"
+                            checked={isChecked}
+                            onChange={() => toggleCalendar(calendar.id)}
+                          />
+                        </Box>
+                      }
+                    >
+                      <ListItemButton
+                        dense
+                        selected={isPrimary}
+                        onClick={() => {
+                          setSelectedCalendar(calendar.id);
+                          if (!isChecked) {
+                            toggleCalendar(calendar.id);
+                          }
+                        }}
+                        sx={{ borderRadius: 1 }}
+                      >
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: '50%',
+                            bgcolor: calendar.color,
+                            mr: 1.5,
+                            flexShrink: 0,
+                            border: '2px dashed rgba(0,0,0,0.3)',
+                          }}
+                        />
+                        <ListItemText
+                          primary={calendar.name}
+                          secondary={calendar.owner?.displayName || calendar.owner?.username || '共享'}
+                          primaryTypographyProps={{ variant: 'body2', fontWeight: isPrimary ? 600 : 400 }}
+                          secondaryTypographyProps={{ variant: 'caption', fontSize: '0.65rem' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </>
+          )}
+
           {calendars.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
               暂无日历，点击上方按钮创建
@@ -248,6 +383,8 @@ export default function CalendarPage() {
           onEventClick={handleEventClick}
           onDateClick={handleDateClick}
           calendarColor={primaryCalendar?.color}
+          sharedCalendarIds={sharedCalendarIds}
+          calendars={calendars}
         />
 
         {selectedEvent && (
@@ -262,8 +399,24 @@ export default function CalendarPage() {
                   const cal = calendars.find((c) => c.id === selectedEvent.calendarId);
                   return cal ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: cal.color, flexShrink: 0 }} />
-                      <Typography variant="caption" color="text.secondary">{cal.name}</Typography>
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: cal.ownerId !== user?.id ? '2px' : '50%',
+                          bgcolor: cal.color,
+                          flexShrink: 0,
+                          ...(cal.ownerId !== user?.id ? { border: '1px dashed rgba(0,0,0,0.4)' } : {}),
+                        }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {cal.name}
+                        {cal.ownerId !== user?.id && (
+                          <Typography component="span" variant="caption" sx={{ fontSize: '0.6rem', ml: 0.5, color: 'text.disabled' }}>
+                            ({cal.owner?.displayName || cal.owner?.username})
+                          </Typography>
+                        )}
+                      </Typography>
                     </Box>
                   ) : null;
                 })()}
@@ -285,7 +438,10 @@ export default function CalendarPage() {
                 <IconButton size="small" onClick={() => handleEditEvent(selectedEvent)} title="编辑">
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" onClick={() => setSelectedEvent(null)}>
+                <IconButton size="small" onClick={() => handleDeleteEvent(selectedEvent)} title="删除">
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" onClick={() => setSelectedEvent(null)} title="关闭">
                   ✕
                 </IconButton>
               </Box>
@@ -301,6 +457,7 @@ export default function CalendarPage() {
             calendars={calendars}
             defaultDate={eventDialogDate ?? undefined}
             event={editingEvent}
+            userId={user?.id}
           />
         )}
 

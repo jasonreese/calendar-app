@@ -20,9 +20,17 @@ import {
   Chip,
   Divider,
   Alert,
+  Snackbar,
+  Tooltip,
 } from '@mui/material';
-import { Delete as DeleteIcon, PersonAdd as PersonAddIcon } from '@mui/icons-material';
+import {
+  Delete as DeleteIcon,
+  PersonAdd as PersonAddIcon,
+  Link as LinkIcon,
+  ContentCopy as CopyIcon,
+} from '@mui/icons-material';
 import { calendarService } from '../../services/calendarService';
+import { invitationService } from '../../services/invitationService';
 import { useAuthStore } from '../../store/authStore';
 import type { CalendarMember } from '@calendar-app/shared';
 import { MemberRole } from '@calendar-app/shared';
@@ -73,6 +81,9 @@ export default function MemberDialog({
   const [addRole, setAddRole] = useState<MemberRole>(MemberRole.EDITOR);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const isOwner = user?.id === ownerId;
 
@@ -144,6 +155,26 @@ export default function MemberDialog({
     }
   };
 
+  const handleGenerateInvite = async () => {
+    setGenerating(true);
+    setError('');
+    try {
+      const result = await invitationService.createInvitation(calendarId);
+      const baseUrl = window.location.origin;
+      const msg = `${result.inviterName}邀请您加入「${result.calendarName}」日历，点击下方链接加入：\n${baseUrl}/join/${result.token}`;
+      setInviteLink(msg);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || '生成邀请链接失败');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+  };
+
   const ownerMember = localMembers.find((m) => m.userId === ownerId);
   const otherMembers = localMembers.filter((m) => m.userId !== ownerId);
 
@@ -172,6 +203,57 @@ export default function MemberDialog({
               </Typography>
               <Chip label="所有者" size="small" color="primary" />
             </Box>
+          </Box>
+        )}
+
+        {/* 邀请链接 */}
+        {isOwner && (
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>邀请成员</Typography>
+            {!inviteLink ? (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<LinkIcon />}
+                onClick={handleGenerateInvite}
+                disabled={generating}
+                fullWidth
+              >
+                {generating ? '生成中...' : '生成邀请链接'}
+              </Button>
+            ) : (
+              <Box>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    bgcolor: 'background.paper',
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '0.8rem',
+                    mb: 1,
+                    maxHeight: 120,
+                    overflow: 'auto',
+                  }}
+                >
+                  {inviteLink}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Tooltip title={copied ? '已复制' : '复制到剪贴板'}>
+                    <Button size="small" startIcon={<CopyIcon />} onClick={handleCopy}>
+                      {copied ? '已复制' : '复制'}
+                    </Button>
+                  </Tooltip>
+                  <Button
+                    size="small"
+                    onClick={() => { setInviteLink(''); setCopied(false); }}
+                  >
+                    重新生成
+                  </Button>
+                </Box>
+              </Box>
+            )}
           </Box>
         )}
 
@@ -277,6 +359,12 @@ export default function MemberDialog({
       <DialogActions>
         <Button onClick={onClose}>关闭</Button>
       </DialogActions>
+      <Snackbar
+        open={copied}
+        autoHideDuration={2000}
+        onClose={() => setCopied(false)}
+        message="邀请信息已复制到剪贴板"
+      />
     </Dialog>
   );
 }

@@ -9,6 +9,7 @@ import authRoutes from './routes/authRoutes';
 import calendarRoutes from './routes/calendarRoutes';
 import eventRoutes from './routes/eventRoutes';
 import userRoutes from './routes/userRoutes';
+import invitationRoutes from './routes/invitationRoutes';
 import { setupSocketHandlers } from './socket/socketHandler';
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/calendars', calendarRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/invitations', invitationRoutes);
 
 app.use(errorHandler);
 

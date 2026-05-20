@@ -21,6 +21,7 @@ model User {
   calendarMembers   CalendarMember[]
   events            Event[]
   refreshTokens     RefreshToken[]
+  sentInvitations   CalendarInvitation[]
 
   @@index([email])
   @@index([username])
@@ -39,6 +40,7 @@ model Calendar {
   owner       User              @relation("CalendarOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     CalendarMember[]
   events      Event[]
+  invitations CalendarInvitation[]
 
   @@index([ownerId])
 }
@@ -85,6 +87,21 @@ model Event {
   @@index([creatorId])
   @@index([startTime])
   @@index([endTime])
+}
+
+model CalendarInvitation {
+  id          String    @id @default(uuid())
+  calendarId  String
+  inviterId   String
+  token       String    @unique @default(uuid())
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  calendar    Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  inviter     User      @relation(fields: [inviterId], references: [id])
+
+  @@index([token])
+  @@index([calendarId])
 }
 
 model RefreshToken {

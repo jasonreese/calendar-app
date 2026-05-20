@@ -2,7 +2,7 @@ import api from './api';
 import type { CreateUserDto, LoginDto, AuthResponse, UserProfile } from '@calendar-app/shared';
 
 export const authService = {
-  async register(data: CreateUserDto): Promise<AuthResponse> {
+  async register(data: CreateUserDto & { invitationToken?: string }): Promise<AuthResponse> {
     const response = await api.post('/auth/register', data);
     const authData = response.data.data;
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Box,
@@ -14,6 +14,8 @@ import { useAuthStore } from '../store/authStore';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite') || undefined;
   const setUser = useAuthStore((state) => state.setUser);
   const [formData, setFormData] = useState({
     email: '',
@@ -54,6 +56,7 @@ export default function RegisterPage() {
         username: formData.username,
         password: formData.password,
         displayName: formData.displayName || undefined,
+        invitationToken: inviteToken,
       });
       setUser(result.user);
       navigate('/');
